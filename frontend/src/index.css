@@ -2,7 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================
+ *  GAIA — Typography & Theme Tokens
+ *  Edit these CSS variables to restyle the brand for any fork.
+ * ============================================================= */
 :root {
+    /* --- Palette --- */
     --bg: #fdfbf7;
     --surface: #ffffff;
     --text: #2c2a29;
@@ -10,6 +15,44 @@
     --gold: #d4af37;
     --gold-hover: #c5a017;
     --border: #e6e2d8;
+
+    /* --- English typography --- */
+    --font-display-en: "Cormorant Garamond", "Cairo", serif;
+    --font-body-en: "Manrope", system-ui, sans-serif;
+
+    /* --- Arabic typography --- */
+    --font-display-ar: "Cairo", "Cormorant Garamond", serif;
+    --font-body-ar: "Tajawal", "Cairo", system-ui, sans-serif;
+
+    /* --- Display weights & tracking --- */
+    --display-weight: 500;
+    --display-weight-ar: 600;
+    --display-tracking: 0.02em;
+
+    /* --- Brand wordmark (e.g., "GAIA" header) --- */
+    --brand-size-mobile: 3rem;       /* 48px */
+    --brand-size-desktop: 3.75rem;   /* 60px */
+    --brand-tracking: 0.25em;
+    --brand-weight: 500;
+
+    /* --- Section / micro-label --- */
+    --label-size: 0.625rem;          /* 10px */
+    --label-tracking: 0.35em;
+    --label-weight: 400;
+
+    /* --- Body --- */
+    --body-size: 1rem;
+    --body-weight: 400;
+    --body-line: 1.6;
+
+    /* --- UI controls (buttons) --- */
+    --btn-size: 0.75rem;             /* 12px */
+    --btn-tracking: 0.3em;
+    --btn-weight: 500;
+
+    /* --- Stars --- */
+    --star-size-mobile: 38px;
+    --star-size-desktop: 42px;
 }
 
 html,
@@ -23,34 +66,68 @@ body {
 }
 
 body {
-    font-family: "Manrope", system-ui, sans-serif;
-    font-weight: 400;
+    font-family: var(--font-body-en);
+    font-weight: var(--body-weight);
+    font-size: var(--body-size);
+    line-height: var(--body-line);
 }
 
 html[dir="rtl"] body {
-    font-family: "Tajawal", "Cairo", system-ui, sans-serif;
+    font-family: var(--font-body-ar);
 }
 
+/* --- Display headings --- */
 .font-serif-display {
-    font-family: "Cormorant Garamond", "Cairo", serif;
-    font-weight: 500;
-    letter-spacing: 0.02em;
+    font-family: var(--font-display-en);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
 }
 
 html[dir="rtl"] .font-serif-display {
-    font-family: "Cairo", "Cormorant Garamond", serif;
-    font-weight: 600;
+    font-family: var(--font-display-ar);
+    font-weight: var(--display-weight-ar);
 }
 
-.font-ui {
-    font-family: "Manrope", system-ui, sans-serif;
+/* --- Brand wordmark --- */
+.brand-mark {
+    font-family: var(--font-display-en);
+    font-weight: var(--brand-weight);
+    letter-spacing: var(--brand-tracking);
+    font-size: var(--brand-size-mobile);
+    line-height: 1;
+    text-transform: uppercase;
 }
 
-html[dir="rtl"] .font-ui {
-    font-family: "Tajawal", "Cairo", system-ui, sans-serif;
+@media (min-width: 640px) {
+    .brand-mark {
+        font-size: var(--brand-size-desktop);
+    }
 }
 
-/* Page entrance */
+html[dir="rtl"] .brand-mark {
+    font-family: var(--font-display-ar);
+}
+
+/* --- Micro section label --- */
+.micro-label {
+    font-size: var(--label-size);
+    letter-spacing: var(--label-tracking);
+    font-weight: var(--label-weight);
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* --- Button typography --- */
+.btn-text {
+    font-size: var(--btn-size);
+    letter-spacing: var(--btn-tracking);
+    font-weight: var(--btn-weight);
+    text-transform: uppercase;
+}
+
+/* =============================================================
+ *  Animations
+ * ============================================================= */
 @keyframes fadeUp {
     from {
         opacity: 0;
@@ -65,58 +142,35 @@ html[dir="rtl"] .font-ui {
 .fade-up {
     animation: fadeUp 0.6s ease-out both;
 }
+.fade-up-1 { animation-delay: 0.05s; }
+.fade-up-2 { animation-delay: 0.15s; }
+.fade-up-3 { animation-delay: 0.25s; }
+.fade-up-4 { animation-delay: 0.35s; }
+.fade-up-5 { animation-delay: 0.45s; }
 
-.fade-up-1 {
-    animation-delay: 0.05s;
-}
-.fade-up-2 {
-    animation-delay: 0.15s;
-}
-.fade-up-3 {
-    animation-delay: 0.25s;
-}
-.fade-up-4 {
-    animation-delay: 0.35s;
-}
-.fade-up-5 {
-    animation-delay: 0.45s;
-}
-
-/* Modal */
 @keyframes modalIn {
-    from {
-        opacity: 0;
-        transform: scale(0.96);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
 }
+.modal-in { animation: modalIn 0.4s ease-out both; }
 
-.modal-in {
-    animation: modalIn 0.4s ease-out both;
-}
-
-/* Star micro-interaction */
+/* =============================================================
+ *  Stars
+ * ============================================================= */
 .star-btn {
-    transition:
-        transform 0.18s ease-out,
-        color 0.2s ease;
+    transition: transform 0.18s ease-out, color 0.2s ease;
     background: transparent;
     border: 0;
     padding: 0;
     cursor: pointer;
     line-height: 0;
 }
-.star-btn:hover {
-    transform: scale(1.1);
-}
-.star-btn:active {
-    transform: scale(0.96);
-}
+.star-btn:hover { transform: scale(1.1); }
+.star-btn:active { transform: scale(0.96); }
 
-/* Hide native focus rings, use custom */
+/* =============================================================
+ *  Focus
+ * ============================================================= */
 button:focus-visible,
 a:focus-visible,
 textarea:focus-visible,
@@ -125,14 +179,40 @@ input:focus-visible {
     outline-offset: 3px;
 }
 
-textarea {
-    font-family: inherit;
-}
+textarea { font-family: inherit; }
 
-/* Subtle decorative divider */
+/* Decorative gold rule */
 .gold-line {
     width: 48px;
     height: 1px;
     background: var(--gold);
     margin: 0 auto;
+}
+
+/* =============================================================
+ *  Hide platform branding (Emergent badge, etc.)
+ * ============================================================= */
+#emergent-badge,
+a[href*="emergent.sh"],
+a[id*="emergent"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* =============================================================
+ *  Print — for QR Code page
+ * ============================================================= */
+@media print {
+    @page { margin: 0; }
+    body { background: #fff !important; }
+    .no-print { display: none !important; }
+    .print-page {
+        width: 100vw;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 }

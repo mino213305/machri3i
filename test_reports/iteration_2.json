@@ -1,0 +1,35 @@
+{
+  "summary": "Full backend + frontend regression of GAIA service-recovery / spam-protection / QR / bilingual upgrade. 5/5 pytest backend tests pass (GET /api/config, low-rating POST returns email_sent=false with status='queued', rating>=4 returns 400, two rapid POSTs from same IP -> second is 429 with retry_after_seconds, rating=0 -> 422 validation). All 14 frontend scenarios from the review request verified live against the preview URL: Emergent badge hidden (visibility=hidden, no 'Made with Emergent' text), EN default UI with GAIA brand + waiter cards + stars + textarea + Submit, AR toggle flips dir=rtl + AR placeholder + 'English' toggle label and back, 5-star submit opens Google Maps URL via window.open + persists review to localStorage, 3-star submit POSTs /api/alerts/low-rating with correct JSON {rating:3,waiter_name:'Omar',comment:'Slow service test',language:'en'} -> ThankYou modal -> localStorage gaia_last_alert_v1 timestamp set + gaia_reviews_v1 grew, 2nd low-rating within 15min window shows rate-limit-modal with NO new POST and dismiss works, /qr route renders standalone QR page with api.qrserver.com src containing encoded origin URL + Print/Copy/Back buttons + 'Table QR Code' heading, Staff login (1234) -> Owner Dashboard renders qr-card with qr-standalone-link that navigates to /qr, dashboard stats + bilingual toggle work, typography uses Cormorant Garamond on brand-mark in EN and Cairo-first in AR.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gaia_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RESEND_API_KEY is intentionally a placeholder ('re_your_api_key_here') in backend/.env — backend correctly short-circuits with email_sent=false and status='queued'. Before production, set real key in .env and confirm SENDER_EMAIL is a verified Resend domain.",
+    "Server-side rate-limit store is an in-memory dict (_rate_limit_store) — does NOT survive backend restarts and is NOT shared across replicas. Acceptable for single-instance preview; if scaled, move to Redis/Mongo TTL.",
+    "_client_ip trusts X-Forwarded-For without an allow-list. In Kubernetes behind ingress this is fine, but if exposed publicly, a malicious client can easily bypass rate-limit by rotating XFF — consider validating the trusted proxy chain.",
+    "App.js is ~780 lines combining customer view, dashboard, QR card+page, modals, and routing. Functional but consider splitting into /components per the >700-line guideline.",
+    "GOOGLE_MAPS_REVIEW_URL still uses the placeholder placeid 'ChIJN1t_tDeuEmsRUsoyG83frY4' — must be replaced with GAIA Dubai's real Place ID before launch.",
+    "Client-side cooldown uses localStorage so it is per-device only; clearing localStorage bypasses it. Server-side per-IP cooldown is the real defense — both verified working.",
+    "QR generation depends on external https://api.qrserver.com (no fallback). If that service is down, the QR will not render. Consider self-hosting via the 'qrcode' npm package.",
+    "Owner dashboard reviews are memoized with [] deps, so a review submitted while dashboard is open won't appear until re-login — already noted in prior iteration, low priority.",
+    "Emergent badge is hidden via visibility:hidden (not display:none) — element still occupies layout space; cosmetic only and not visible. Matches requirement."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gaia_backend.py (new)",
+    "/app/test_reports/iteration_2.json (new)"
+  ],
+  "success_rate": { "backend": "100% (5/5)", "frontend": "100% (14/14 scenarios)" },
+  "test_credentials": "Staff dashboard password: 1234 (verified). /app/memory/test_credentials.md not present.",
+  "seed_data_creation": "Per-test localStorage was cleared at start of run. Tests generated 2 client-side reviews (1x 5-star w1, 1x 3-star w2) and 1 server-side alert record in Mongo collection 'alerts' (with rating=3, waiter_name='Omar', comment='Slow service test'). Pytest also inserted ~3 additional alert records using unique X-Forwarded-For IPs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend /api/alerts/low-rating uses X-Forwarded-For for rate-limit key — use a unique XFF header per test to isolate. Server-side cooldown is 15 min sliding from last successful POST; cannot be reset without backend restart. Frontend cooldown lives at localStorage key 'gaia_last_alert_v1' and can be cleared between tests. To test the rate-limit modal path: clear gaia_last_alert_v1, submit one low rating successfully (server returns 200), then submit a second low rating from same session within 15min — RateLimitedModal appears via client-side check (no POST is made). Backend 429 path also reachable by clearing localStorage but using same IP twice within 15min."
+}

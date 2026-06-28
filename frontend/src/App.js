@@ -1,25 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
-import { Star, User, Check, X, Lock } from "lucide-react";
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { Star, User, Check, X, Lock, Printer, Copy, ExternalLink, ArrowLeft } from "lucide-react";
 import { translations, waiters } from "@/i18n";
 import "@/App.css";
 
-/* =========================================================
- *  MASTER CONTROLLER — flip to false to suspend the app
- * ========================================================= */
-const isAccountActive = true;
-
-/* =========================================================
- *  CONFIGURATION
- * ========================================================= */
+/* =============================================================
+ *  GLOBAL CONFIGURATION (edit for any fork)
+ * ============================================================= */
+const RESTAURANT_NAME = "GAIA";
 const GOOGLE_MAPS_REVIEW_URL =
   "https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4"; // Replace with your real Place ID URL
-const STAFF_PASSWORD = "1234";
+const MANAGER_EMAIL = "manager@gaia.ae"; // Display-only; real send uses backend ENV
+let isAccountActive = true; // Master kill-switch
+let enableArabic = true;    // Show/hide the Arabic toggle entirely
+
+// Client-side rate limit (must match server window: 15 minutes)
+const RATE_LIMIT_MS = 15 * 60 * 1000;
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
 const STORAGE_KEY = "gaia_reviews_v1";
 const LANG_KEY = "gaia_lang_v1";
+const RATE_LIMIT_KEY = "gaia_last_alert_v1";
+const STAFF_PASSWORD = "1234";
 
-/* =========================================================
- *  HELPERS
- * ========================================================= */
+/* =============================================================
+ *  STORAGE HELPERS
+ * ============================================================= */
 const loadReviews = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -35,9 +43,26 @@ const saveReview = (review) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 };
 
-/* =========================================================
+const getLastAlertAt = () => {
+  try {
+    const v = localStorage.getItem(RATE_LIMIT_KEY);
+    return v ? parseInt(v, 10) : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const setLastAlertAt = (ts) => {
+  try {
+    localStorage.setItem(RATE_LIMIT_KEY, String(ts));
+  } catch {
+    /* ignore */
+  }
+};
+
+/* =============================================================
  *  STAR RATING (classic Google-Maps style, pure SVG)
- * ========================================================= */
+ * ============================================================= */
 const StarRating = ({ value, onChange }) => {
   const [hover, setHover] = useState(0);
   const display = hover || value;
@@ -62,7 +87,6 @@ const StarRating = ({ value, onChange }) => {
             <Star
               size={42}
               strokeWidth={1.2}
-              className="transition-colors"
               color={active ? "#D4AF37" : "#E6E2D8"}
               fill={active ? "#D4AF37" : "transparent"}
             />
@@ -73,36 +97,36 @@ const StarRating = ({ value, onChange }) => {
   );
 };
 
-/* =========================================================
- *  WAITER AVATAR (clean grey user vector)
- * ========================================================= */
+/* =============================================================
+ *  WAITER AVATAR
+ * ============================================================= */
 const WaiterAvatar = ({ selected }) => (
   <div
     className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-colors duration-300 ${
-      selected
-        ? "bg-[#FAF6E8] ring-1 ring-[#D4AF37]"
-        : "bg-[#F5F3ED]"
+      selected ? "bg-[#FAF6E8] ring-1 ring-[#D4AF37]" : "bg-[#F5F3ED]"
     }`}
   >
-    <User
-      size={32}
-      strokeWidth={1.25}
-      color={selected ? "#D4AF37" : "#9A938C"}
-    />
+    <User size={32} strokeWidth={1.25} color={selected ? "#D4AF37" : "#9A938C"} />
   </div>
 );
 
-/* =========================================================
- *  THANK YOU MODAL
- * ========================================================= */
-const ThankYouModal = ({ t, onClose }) => (
+/* =============================================================
+ *  MODALS
+ * ============================================================= */
+const ModalShell = ({ children, testId }) => (
   <div
     className="fixed inset-0 z-50 flex items-center justify-center p-6"
     style={{ background: "rgba(253, 251, 247, 0.95)", backdropFilter: "blur(10px)" }}
     role="dialog"
     aria-modal="true"
-    data-testid="thank-you-modal"
+    data-testid={testId}
   >
+    {children}
+  </div>
+);
+
+const ThankYouModal = ({ t, onClose }) => (
+  <ModalShell testId="thank-you-modal">
     <div className="modal-in max-w-md w-full bg-white border border-[#E6E2D8] px-8 py-12 text-center relative">
       <button
         onClick={onClose}
@@ -112,50 +136,58 @@ const ThankYouModal = ({ t, onClose }) => (
       >
         <X size={18} strokeWidth={1.5} />
       </button>
-
       <div className="mx-auto w-14 h-14 rounded-full border border-[#D4AF37] flex items-center justify-center mb-6">
         <Check size={26} strokeWidth={1.5} color="#D4AF37" />
       </div>
-
-      <h2 className="font-serif-display text-3xl text-[#2C2A29] mb-3">
-        {t.thankYouTitle}
-      </h2>
+      <h2 className="font-serif-display text-3xl text-[#2C2A29] mb-3">{t.thankYouTitle}</h2>
       <div className="gold-line mb-5" />
       <p className="text-[#7A7571] text-sm leading-relaxed">{t.thankYouBody}</p>
-
       <button
         onClick={onClose}
-        className="mt-8 inline-block px-8 py-3 text-xs uppercase tracking-[0.25em] border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors duration-300"
+        className="mt-8 btn-text px-8 py-3 border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors duration-300"
         data-testid="thank-you-dismiss-button"
       >
         {t.close}
       </button>
     </div>
-  </div>
+  </ModalShell>
 );
 
-/* =========================================================
- *  PASSWORD MODAL
- * ========================================================= */
+const RateLimitedModal = ({ t, onClose }) => (
+  <ModalShell testId="rate-limit-modal">
+    <div className="modal-in max-w-md w-full bg-white border border-[#E6E2D8] px-8 py-12 text-center relative">
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 text-[#7A7571] hover:text-[#2C2A29] transition-colors"
+        aria-label="Close"
+        data-testid="rate-limit-close-button"
+      >
+        <X size={18} strokeWidth={1.5} />
+      </button>
+      <h2 className="font-serif-display text-3xl text-[#2C2A29] mb-3">{t.rateLimitedTitle}</h2>
+      <div className="gold-line mb-5" />
+      <p className="text-[#7A7571] text-sm leading-relaxed">{t.rateLimitedBody}</p>
+      <button
+        onClick={onClose}
+        className="mt-8 btn-text px-8 py-3 border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors duration-300"
+        data-testid="rate-limit-dismiss-button"
+      >
+        {t.close}
+      </button>
+    </div>
+  </ModalShell>
+);
+
 const PasswordModal = ({ t, onCancel, onConfirm }) => {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const submit = (e) => {
     e?.preventDefault();
-    if (pw === STAFF_PASSWORD) {
-      onConfirm();
-    } else {
-      setErr(t.passwordIncorrect);
-    }
+    if (pw === STAFF_PASSWORD) onConfirm();
+    else setErr(t.passwordIncorrect);
   };
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "rgba(253, 251, 247, 0.95)", backdropFilter: "blur(10px)" }}
-      role="dialog"
-      aria-modal="true"
-      data-testid="password-modal"
-    >
+    <ModalShell testId="password-modal">
       <form
         onSubmit={submit}
         className="modal-in max-w-sm w-full bg-white border border-[#E6E2D8] px-8 py-10 text-center relative"
@@ -169,67 +201,78 @@ const PasswordModal = ({ t, onCancel, onConfirm }) => {
         >
           <X size={18} strokeWidth={1.5} />
         </button>
-
         <div className="mx-auto w-12 h-12 rounded-full border border-[#E6E2D8] flex items-center justify-center mb-5">
           <Lock size={18} strokeWidth={1.4} color="#7A7571" />
         </div>
-
-        <p className="text-xs uppercase tracking-[0.25em] text-[#7A7571] mb-4">
-          {t.staffLogin}
-        </p>
-
+        <p className="micro-label mb-4">{t.staffLogin}</p>
         <input
           type="password"
           autoFocus
           value={pw}
-          onChange={(e) => {
-            setPw(e.target.value);
-            setErr("");
-          }}
+          onChange={(e) => { setPw(e.target.value); setErr(""); }}
           placeholder={t.enterPassword}
           className="w-full bg-transparent border-0 border-b border-[#E6E2D8] py-3 text-center text-base text-[#2C2A29] placeholder-[#9A938C] focus:outline-none focus:border-[#D4AF37] transition-colors"
           data-testid="password-input"
         />
-
         {err && (
           <p className="mt-3 text-xs text-[#8B0000]" data-testid="password-error">
             {err}
           </p>
         )}
-
         <button
           type="submit"
-          className="mt-6 w-full bg-[#2C2A29] text-white py-3 text-xs uppercase tracking-[0.25em] hover:bg-[#D4AF37] transition-colors duration-300"
+          className="mt-6 w-full bg-[#2C2A29] text-white py-3 btn-text hover:bg-[#D4AF37] transition-colors duration-300"
           data-testid="password-submit-button"
         >
           {t.staffLogin}
         </button>
       </form>
-    </div>
+    </ModalShell>
   );
 };
 
-/* =========================================================
+/* =============================================================
  *  CUSTOMER VIEW
- * ========================================================= */
+ * ============================================================= */
 const CustomerView = ({ t, lang, onOpenDashboard }) => {
   const [selectedWaiter, setSelectedWaiter] = useState(null);
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [showThankYou, setShowThankYou] = useState(false);
+  const [showRateLimited, setShowRateLimited] = useState(false);
   const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = () => {
-    if (!selectedWaiter) {
-      setFormError(t.pleaseSelectWaiter);
-      return;
+  const sendLowRatingAlert = async (waiterObj) => {
+    try {
+      const res = await fetch(`${API}/alerts/low-rating`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating,
+          waiter_name: waiterObj ? waiterObj.en : "Unknown",
+          comment: feedback.trim(),
+          language: lang,
+        }),
+      });
+      if (res.status === 429) {
+        return { ok: false, rateLimited: true };
+      }
+      return { ok: res.ok, rateLimited: false };
+    } catch (e) {
+      console.warn("Alert send failed:", e);
+      return { ok: false, rateLimited: false };
     }
-    if (!rating) {
-      setFormError(t.pleaseRate);
-      return;
-    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedWaiter) { setFormError(t.pleaseSelectWaiter); return; }
+    if (!rating) { setFormError(t.pleaseRate); return; }
     setFormError("");
 
+    const waiterObj = waiters.find((w) => w.id === selectedWaiter);
+
+    // Persist review locally regardless of routing
     const review = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       waiterId: selectedWaiter,
@@ -241,49 +284,51 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
 
     if (rating >= 4) {
       window.open(GOOGLE_MAPS_REVIEW_URL, "_blank", "noopener,noreferrer");
-      // Reset form
-      setSelectedWaiter(null);
-      setRating(0);
-      setFeedback("");
-    } else {
-      setShowThankYou(true);
+      setSelectedWaiter(null); setRating(0); setFeedback("");
+      return;
     }
+
+    // Low rating → spam protection + email alert
+    const now = Date.now();
+    if (now - getLastAlertAt() < RATE_LIMIT_MS) {
+      setShowRateLimited(true);
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await sendLowRatingAlert(waiterObj);
+    setSubmitting(false);
+
+    if (result.rateLimited) {
+      setShowRateLimited(true);
+      return;
+    }
+    // Mark local cooldown regardless of email backend result
+    setLastAlertAt(now);
+    setShowThankYou(true);
   };
 
   const closeThankYou = () => {
     setShowThankYou(false);
-    setSelectedWaiter(null);
-    setRating(0);
-    setFeedback("");
+    setSelectedWaiter(null); setRating(0); setFeedback("");
   };
 
   return (
     <div className="w-full max-w-md mx-auto px-6 pt-20 pb-16 flex flex-col">
       {/* Header */}
       <header className="text-center fade-up fade-up-1">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.4em] text-[#7A7571]">
-          {t.eyebrow}
-        </p>
+        <p className="micro-label">{t.eyebrow}</p>
         <div className="gold-line my-5" />
-        <p className="font-serif-display text-lg sm:text-xl text-[#2C2A29]">
-          {t.welcome}
-        </p>
-        <h1
-          className="font-serif-display text-5xl sm:text-6xl tracking-[0.25em] uppercase text-[#2C2A29] mt-2"
-          data-testid="restaurant-name"
-        >
-          {t.brand}
+        <p className="font-serif-display text-lg sm:text-xl text-[#2C2A29]">{t.welcome}</p>
+        <h1 className="brand-mark text-[#2C2A29] mt-2" data-testid="restaurant-name">
+          {RESTAURANT_NAME}
         </h1>
-        <p className="text-xs uppercase tracking-[0.3em] text-[#7A7571] mt-5">
-          {t.tagline}
-        </p>
+        <p className="micro-label mt-5">{t.tagline}</p>
       </header>
 
       {/* Waiter Selection */}
       <section className="mt-14 fade-up fade-up-2">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-[#7A7571] text-center mb-6">
-          {t.selectWaiterLabel}
-        </p>
+        <p className="micro-label text-center mb-6">{t.selectWaiterLabel}</p>
         <div className="grid grid-cols-3 gap-x-2 gap-y-6">
           {waiters.map((w) => {
             const selected = selectedWaiter === w.id;
@@ -311,17 +356,13 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
 
       {/* Rating */}
       <section className="mt-14 fade-up fade-up-3">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-[#7A7571] text-center mb-6">
-          {t.rateLabel}
-        </p>
+        <p className="micro-label text-center mb-6">{t.rateLabel}</p>
         <StarRating value={rating} onChange={setRating} />
       </section>
 
       {/* Feedback */}
       <section className="mt-14 fade-up fade-up-4">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.35em] text-[#7A7571] mb-3">
-          {t.feedbackLabel}
-        </p>
+        <p className="micro-label mb-3">{t.feedbackLabel}</p>
         <textarea
           rows={3}
           value={feedback}
@@ -333,10 +374,7 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
       </section>
 
       {formError && (
-        <p
-          className="mt-6 text-xs text-[#8B0000] text-center"
-          data-testid="form-error"
-        >
+        <p className="mt-6 text-xs text-[#8B0000] text-center" data-testid="form-error">
           {formError}
         </p>
       )}
@@ -346,10 +384,11 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
         <button
           type="button"
           onClick={handleSubmit}
-          className="w-full bg-[#2C2A29] text-white py-4 text-xs uppercase tracking-[0.3em] hover:bg-[#D4AF37] transition-colors duration-300"
+          disabled={submitting}
+          className="w-full bg-[#2C2A29] text-white py-4 btn-text hover:bg-[#D4AF37] transition-colors duration-300 disabled:opacity-60 disabled:cursor-wait"
           data-testid="submit-review-button"
         >
-          {t.submit}
+          {submitting ? t.sending : t.submit}
         </button>
       </div>
 
@@ -366,32 +405,124 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
       </div>
 
       {showThankYou && <ThankYouModal t={t} onClose={closeThankYou} />}
+      {showRateLimited && (
+        <RateLimitedModal t={t} onClose={() => setShowRateLimited(false)} />
+      )}
     </div>
   );
 };
 
-/* =========================================================
+/* =============================================================
+ *  QR CODE BLOCK (used in Dashboard + /qr route)
+ * ============================================================= */
+const buildQrUrl = (data, size = 600) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&format=png&data=${encodeURIComponent(data)}`;
+
+const QrCard = ({ t, targetUrl, compact = false }) => {
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(targetUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handlePrint = () => window.print();
+
+  return (
+    <div
+      className={`bg-white border border-[#E6E2D8] ${compact ? "p-6" : "p-10"} text-center print-page`}
+      data-testid="qr-card"
+    >
+      <p className="micro-label">{RESTAURANT_NAME}</p>
+      <div className="gold-line my-4" />
+      <h3 className="font-serif-display text-2xl text-[#2C2A29]">{t.qrTitle}</h3>
+      <p className="text-xs text-[#7A7571] mt-2">{t.qrSubtitle}</p>
+
+      <div className="my-8 inline-block p-4 border border-[#E6E2D8] bg-white">
+        <img
+          src={buildQrUrl(targetUrl, compact ? 280 : 480)}
+          alt="QR code"
+          width={compact ? 220 : 360}
+          height={compact ? 220 : 360}
+          style={{ display: "block" }}
+          data-testid="qr-image"
+        />
+      </div>
+
+      <p className="micro-label">{t.scanCta}</p>
+      <p className="mt-2 text-[11px] text-[#9A938C] break-all max-w-md mx-auto">
+        {targetUrl}
+      </p>
+
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3 no-print">
+        <button
+          onClick={handlePrint}
+          className="inline-flex items-center gap-2 px-5 py-2.5 btn-text border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors"
+          data-testid="qr-print-button"
+        >
+          <Printer size={14} strokeWidth={1.5} /> {t.qrPrint}
+        </button>
+        <button
+          onClick={copyLink}
+          className="inline-flex items-center gap-2 px-5 py-2.5 btn-text border border-[#E6E2D8] text-[#7A7571] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors"
+          data-testid="qr-copy-button"
+        >
+          <Copy size={14} strokeWidth={1.5} /> {copied ? t.qrCopied : t.qrCopy}
+        </button>
+        {compact && (
+          <Link
+            to="/qr"
+            className="inline-flex items-center gap-2 px-5 py-2.5 btn-text border border-[#E6E2D8] text-[#7A7571] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors"
+            data-testid="qr-standalone-link"
+          >
+            <ExternalLink size={14} strokeWidth={1.5} /> {t.qrOpenStandalone}
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* =============================================================
+ *  STANDALONE /qr PAGE
+ * ============================================================= */
+const QrPage = ({ t, lang, onToggleLang }) => {
+  const targetUrl = window.location.origin + "/";
+  return (
+    <div className="min-h-screen w-full" style={{ background: "var(--bg)" }}>
+      <LanguageToggle onToggle={onToggleLang} t={t} />
+      <div className="max-w-2xl mx-auto px-6 py-16 fade-up">
+        <Link
+          to="/"
+          className="no-print inline-flex items-center gap-2 micro-label hover:text-[#2C2A29] transition-colors mb-6"
+          data-testid="qr-back-link"
+        >
+          <ArrowLeft size={12} strokeWidth={1.5} /> {t.qrBack}
+        </Link>
+        <QrCard t={t} targetUrl={targetUrl} />
+      </div>
+    </div>
+  );
+};
+
+/* =============================================================
  *  OWNER DASHBOARD
- * ========================================================= */
+ * ============================================================= */
 const OwnerDashboard = ({ t, lang, onLogout }) => {
   const reviews = useMemo(() => loadReviews(), []);
   const total = reviews.length;
-  const avg =
-    total === 0
-      ? 0
-      : reviews.reduce((s, r) => s + r.rating, 0) / total;
+  const avg = total === 0 ? 0 : reviews.reduce((s, r) => s + r.rating, 0) / total;
+  const targetUrl = window.location.origin + "/";
 
-  // Per-waiter aggregation
   const waiterMap = useMemo(() => {
     const m = {};
     waiters.forEach((w) => {
-      m[w.id] = {
-        id: w.id,
-        name: w[lang],
-        count: 0,
-        sum: 0,
-        dist: [0, 0, 0, 0, 0], // 1..5
-      };
+      m[w.id] = { id: w.id, name: w[lang], count: 0, sum: 0, dist: [0, 0, 0, 0, 0] };
     });
     reviews.forEach((r) => {
       if (!m[r.waiterId]) return;
@@ -406,11 +537,7 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
     try {
       const d = new Date(iso);
       return d.toLocaleString(lang === "ar" ? "ar-AE" : "en-GB", {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
+        year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit",
       });
     } catch {
       return iso;
@@ -421,16 +548,14 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
     <div className="w-full max-w-5xl mx-auto px-6 py-16 fade-up">
       <div className="flex items-center justify-between mb-10">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.35em] text-[#7A7571]">
-            GAIA
-          </p>
+          <p className="micro-label">{RESTAURANT_NAME}</p>
           <h1 className="font-serif-display text-3xl sm:text-4xl text-[#2C2A29] mt-1">
             {t.dashboardTitle}
           </h1>
         </div>
         <button
           onClick={onLogout}
-          className="px-5 py-2 text-[10px] uppercase tracking-[0.3em] border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors"
+          className="px-5 py-2 btn-text border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors"
           data-testid="dashboard-logout-button"
         >
           {t.logout}
@@ -440,24 +565,13 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
       {/* Stats */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-[#E6E2D8] border border-[#E6E2D8] mb-14">
         <StatCard label={t.totalReviews} value={total} testId="stat-total" />
-        <StatCard
-          label={t.averageRating}
-          value={total ? avg.toFixed(2) : t.none}
-          accent
-          testId="stat-average"
-        />
-        <StatCard
-          label={t.waitersTracked}
-          value={waiters.length}
-          testId="stat-waiters"
-        />
+        <StatCard label={t.averageRating} value={total ? avg.toFixed(2) : t.none} accent testId="stat-average" />
+        <StatCard label={t.waitersTracked} value={waiters.length} testId="stat-waiters" />
       </section>
 
       {/* Breakdown table */}
       <section className="mb-14">
-        <p className="text-[10px] uppercase tracking-[0.35em] text-[#7A7571] mb-4">
-          {t.breakdown}
-        </p>
+        <p className="micro-label mb-4">{t.breakdown}</p>
         <div className="overflow-x-auto border border-[#E6E2D8]">
           <table className="w-full border-collapse">
             <thead>
@@ -473,17 +587,12 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
                 <tr key={w.id} className="border-t border-[#E6E2D8]/70">
                   <Td>{w.name}</Td>
                   <Td>{w.count}</Td>
-                  <Td>
-                    {w.count
-                      ? (w.sum / w.count).toFixed(2)
-                      : t.none}
-                  </Td>
+                  <Td>{w.count ? (w.sum / w.count).toFixed(2) : t.none}</Td>
                   <Td>
                     <span className="inline-flex gap-2 text-[11px] text-[#7A7571]">
                       {w.dist.map((c, i) => (
                         <span key={i}>
-                          <span className="text-[#D4AF37]">{i + 1}★</span>:{" "}
-                          {c}
+                          <span className="text-[#D4AF37]">{i + 1}★</span>: {c}
                         </span>
                       ))}
                     </span>
@@ -496,10 +605,8 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
       </section>
 
       {/* Recent feedback */}
-      <section>
-        <p className="text-[10px] uppercase tracking-[0.35em] text-[#7A7571] mb-4">
-          {t.recent}
-        </p>
+      <section className="mb-14">
+        <p className="micro-label mb-4">{t.recent}</p>
         {total === 0 ? (
           <p className="text-sm text-[#7A7571] py-8 text-center border border-dashed border-[#E6E2D8]">
             {t.noReviewsYet}
@@ -519,25 +626,15 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
                 {reviews.slice(0, 50).map((r) => {
                   const w = waiters.find((x) => x.id === r.waiterId);
                   return (
-                    <tr
-                      key={r.id}
-                      className="border-t border-[#E6E2D8]/70"
-                      data-testid={`review-row-${r.id}`}
-                    >
+                    <tr key={r.id} className="border-t border-[#E6E2D8]/70" data-testid={`review-row-${r.id}`}>
                       <Td>{fmtDate(r.createdAt)}</Td>
                       <Td>{w ? w[lang] : t.none}</Td>
                       <Td>
-                        <span className="text-[#D4AF37]">
-                          {"★".repeat(r.rating)}
-                        </span>
-                        <span className="text-[#E6E2D8]">
-                          {"★".repeat(5 - r.rating)}
-                        </span>
+                        <span className="text-[#D4AF37]">{"★".repeat(r.rating)}</span>
+                        <span className="text-[#E6E2D8]">{"★".repeat(5 - r.rating)}</span>
                       </Td>
                       <Td>
-                        <span className="text-[#2C2A29]">
-                          {r.feedback || t.none}
-                        </span>
+                        <span className="text-[#2C2A29]">{r.feedback || t.none}</span>
                       </Td>
                     </tr>
                   );
@@ -547,22 +644,20 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
           </div>
         )}
       </section>
+
+      {/* QR Code section */}
+      <section className="mb-4">
+        <p className="micro-label mb-4">{t.qrTitle}</p>
+        <QrCard t={t} targetUrl={targetUrl} compact />
+      </section>
     </div>
   );
 };
 
 const StatCard = ({ label, value, accent, testId }) => (
   <div className="bg-white p-8 text-center" data-testid={testId}>
-    <p className="text-[10px] uppercase tracking-[0.35em] text-[#7A7571] mb-3">
-      {label}
-    </p>
-    <p
-      className={`font-serif-display text-4xl ${
-        accent ? "text-[#D4AF37]" : "text-[#2C2A29]"
-      }`}
-    >
-      {value}
-    </p>
+    <p className="micro-label mb-3">{label}</p>
+    <p className={`font-serif-display text-4xl ${accent ? "text-[#D4AF37]" : "text-[#2C2A29]"}`}>{value}</p>
   </div>
 );
 
@@ -571,25 +666,19 @@ const Th = ({ children }) => (
     {children}
   </th>
 );
-
 const Td = ({ children }) => (
   <td className="px-4 py-3 text-sm text-[#2C2A29] align-middle">{children}</td>
 );
 
-/* =========================================================
+/* =============================================================
  *  SUSPENDED VIEW
- * ========================================================= */
+ * ============================================================= */
 const SuspendedView = () => (
   <div className="min-h-screen flex items-center justify-center px-6 text-center">
     <div className="max-w-md flex flex-col items-center gap-6 fade-up">
-      <p className="text-[10px] uppercase tracking-[0.4em] text-[#7A7571]">
-        GAIA
-      </p>
+      <p className="micro-label">{RESTAURANT_NAME}</p>
       <div className="gold-line" />
-      <p
-        className="font-serif-display text-2xl text-[#2C2A29] leading-snug"
-        data-testid="suspended-en"
-      >
+      <p className="font-serif-display text-2xl text-[#2C2A29] leading-snug" data-testid="suspended-en">
         This service is temporarily suspended. Please contact technical support.
       </p>
       <p
@@ -604,26 +693,30 @@ const SuspendedView = () => (
   </div>
 );
 
-/* =========================================================
+/* =============================================================
  *  LANGUAGE TOGGLE
- * ========================================================= */
-const LanguageToggle = ({ lang, onToggle, t }) => (
-  <button
-    type="button"
-    onClick={onToggle}
-    className="fixed top-5 right-5 z-40 px-4 py-2 text-xs uppercase tracking-[0.25em] bg-white/80 backdrop-blur-sm border border-[#E6E2D8] text-[#2C2A29] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors duration-300"
-    aria-label="Toggle language"
-    data-testid="language-toggle-button"
-  >
-    {t.toggleLabel}
-  </button>
-);
+ * ============================================================= */
+const LanguageToggle = ({ onToggle, t }) => {
+  if (!enableArabic) return null;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="fixed top-5 right-5 z-40 px-4 py-2 btn-text bg-white/80 backdrop-blur-sm border border-[#E6E2D8] text-[#2C2A29] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors duration-300 no-print"
+      aria-label="Toggle language"
+      data-testid="language-toggle-button"
+    >
+      {t.toggleLabel}
+    </button>
+  );
+};
 
-/* =========================================================
+/* =============================================================
  *  APP ROOT
- * ========================================================= */
+ * ============================================================= */
 export default function App() {
   const [lang, setLang] = useState(() => {
+    if (!enableArabic) return "en";
     try {
       const saved = localStorage.getItem(LANG_KEY);
       return saved === "ar" ? "ar" : "en";
@@ -637,56 +730,53 @@ export default function App() {
 
   const t = translations[lang];
 
-  // Set <html dir> + lang
   useEffect(() => {
     document.documentElement.setAttribute("dir", t.dir);
     document.documentElement.setAttribute("lang", lang);
-    try {
-      localStorage.setItem(LANG_KEY, lang);
-    } catch {
-      /* ignore */
-    }
+    try { localStorage.setItem(LANG_KEY, lang); } catch { /* ignore */ }
   }, [lang, t.dir]);
 
   const toggleLang = () => {
+    if (!enableArabic) return;
     setLang((l) => (l === "en" ? "ar" : "en"));
-    setFadeKey((k) => k + 1); // re-trigger fade
+    setFadeKey((k) => k + 1);
   };
 
-  if (!isAccountActive) {
-    return <SuspendedView />;
-  }
+  if (!isAccountActive) return <SuspendedView />;
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg)" }}>
-      <LanguageToggle lang={lang} onToggle={toggleLang} t={t} />
-
-      <main key={`${view}-${lang}-${fadeKey}`} className="fade-up">
-        {view === "customer" ? (
-          <CustomerView
-            t={t}
-            lang={lang}
-            onOpenDashboard={() => setAskingPassword(true)}
-          />
-        ) : (
-          <OwnerDashboard
-            t={t}
-            lang={lang}
-            onLogout={() => setView("customer")}
-          />
-        )}
-      </main>
-
-      {askingPassword && (
-        <PasswordModal
-          t={t}
-          onCancel={() => setAskingPassword(false)}
-          onConfirm={() => {
-            setAskingPassword(false);
-            setView("dashboard");
-          }}
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/qr"
+          element={<QrPage t={t} lang={lang} onToggleLang={toggleLang} />}
         />
-      )}
-    </div>
+        <Route
+          path="*"
+          element={
+            <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+              <LanguageToggle onToggle={toggleLang} t={t} />
+              <main key={`${view}-${lang}-${fadeKey}`} className="fade-up">
+                {view === "customer" ? (
+                  <CustomerView t={t} lang={lang} onOpenDashboard={() => setAskingPassword(true)} />
+                ) : (
+                  <OwnerDashboard t={t} lang={lang} onLogout={() => setView("customer")} />
+                )}
+              </main>
+              {askingPassword && (
+                <PasswordModal
+                  t={t}
+                  onCancel={() => setAskingPassword(false)}
+                  onConfirm={() => { setAskingPassword(false); setView("dashboard"); }}
+                />
+              )}
+            </div>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
+
+/* Export config for documentation / testing */
+export { RESTAURANT_NAME, GOOGLE_MAPS_REVIEW_URL, MANAGER_EMAIL };
