@@ -736,33 +736,86 @@ export default function App() {
     try { localStorage.setItem(LANG_KEY, lang); } catch { /* ignore */ }
   }, [lang, t.dir]);
 
-  // === Aggressive platform-branding killer ===
-  // The platform script may inject / re-inject an "emergent-badge" element with
-  // inline !important styles. We nuke it on mount and on every DOM mutation.
+  // =============================================================
+  //  AGGRESSIVE PLATFORM-BRANDING KILLER
+  //  Three independent defenses run together so the badge cannot
+  //  survive on either / or /qr:
+  //  (a) Inject a <style> tag into <head> with id/class-based CSS
+  //  (b) MutationObserver removes injected nodes the instant they appear
+  //  (c) setInterval(500ms) safety net in case (a) and (b) miss anything
+  // =============================================================
   useEffect(() => {
+    // (a) Inject a hard-override <style> tag once
+    const STYLE_TAG_ID = "gaia-brand-killer-style";
+    if (!document.getElementById(STYLE_TAG_ID)) {
+      const styleTag = document.createElement("style");
+      styleTag.id = STYLE_TAG_ID;
+      styleTag.appendChild(
+        document.createTextNode(`
+          #emergent-badge,
+          a#emergent-badge,
+          a[id*="emergent"],
+          a[href*="emergent.sh"],
+          a[href*="emergent.host"],
+          [class*="emergent-badge"],
+          [class*="EmergentBadge"],
+          [data-emergent],
+          iframe[src*="emergent"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            position: fixed !important;
+            left: -99999px !important;
+            top: -99999px !important;
+            z-index: -1 !important;
+          }
+        `),
+      );
+      document.head.appendChild(styleTag);
+    }
+
+    // (b) + (c) Active removal
     const killBadge = () => {
       const selectors = [
-        '#emergent-badge',
-        'a[id*="emergent"]',
+        "#emergent-badge",
+        'a[id*="emergent" i]',
         'a[href*="emergent.sh"]',
         'a[href*="emergent.host"]',
+        '[class*="emergent-badge"]',
+        '[class*="EmergentBadge"]',
+        "[data-emergent]",
+        'iframe[src*="emergent"]',
       ];
       selectors.forEach((sel) => {
-        document.querySelectorAll(sel).forEach((el) => {
-          try { el.remove(); } catch { /* ignore */ }
-        });
+        try {
+          document.querySelectorAll(sel).forEach((el) => {
+            try { el.remove(); } catch { /* ignore */ }
+          });
+        } catch { /* ignore selector */ }
       });
-      // Also strip any element whose visible text says "Made with Emergent"
-      document.querySelectorAll("a, div, span, p").forEach((el) => {
-        if (el.childElementCount === 0 && /made with emergent/i.test(el.textContent || "")) {
+      // Text-content sweep — kill any leaf element whose only text is "Made with Emergent"
+      document.querySelectorAll("a, div, span, p, button").forEach((el) => {
+        if (
+          el.childElementCount === 0 &&
+          /made with emergent/i.test((el.textContent || "").trim())
+        ) {
           try { el.remove(); } catch { /* ignore */ }
         }
       });
     };
+
     killBadge();
     const observer = new MutationObserver(killBadge);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    const interval = setInterval(killBadge, 500);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
   }, []);
 
   const toggleLang = () => {
