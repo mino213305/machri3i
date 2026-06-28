@@ -202,17 +202,72 @@ a[id*="emergent"] {
 }
 
 /* =============================================================
- *  Print — for QR Code page
+ *  Print — for QR Code page (printable single-page output)
  * ============================================================= */
 @media print {
-    @page { margin: 0; }
-    body { background: #fff !important; }
-    .no-print { display: none !important; }
-    .print-page {
-        width: 100vw;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    @page {
+        margin: 12mm;
+        size: A4 portrait;
+    }
+
+    html,
+    body {
+        background: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+
+    /* Center a single, clean QR card on the printed page */
+    .qr-card {
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        max-width: 480px;
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    /* Brand wordmark scaled for paper */
+    .qr-card .qr-brand {
+        font-size: 12px !important;
+        letter-spacing: 0.45em !important;
+    }
+
+    /* QR image: large + crisp on paper */
+    .qr-card .qr-image-wrap {
+        border: none !important;
+        padding: 0 !important;
+        margin: 24px auto !important;
+        display: block !important;
+    }
+    .qr-card .qr-image-wrap img {
+        width: 320px !important;
+        height: 320px !important;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+
+    /* Hide the long URL line on print — it's noise on paper */
+    .qr-card .qr-url {
+        display: none !important;
+    }
+
+    /* Hide everything outside the QR card when printing */
+    body * {
+        visibility: hidden;
+    }
+    .qr-card,
+    .qr-card * {
+        visibility: visible;
+    }
+    .qr-card {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 24mm;
     }
 }

@@ -415,8 +415,8 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
 /* =============================================================
  *  QR CODE BLOCK (used in Dashboard + /qr route)
  * ============================================================= */
-const buildQrUrl = (data, size = 600) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&format=png&data=${encodeURIComponent(data)}`;
+const buildQrUrl = (data, size = 1000) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&format=png&ecc=H&data=${encodeURIComponent(data)}`;
 
 const QrCard = ({ t, targetUrl, compact = false }) => {
   const [copied, setCopied] = useState(false);
@@ -435,27 +435,27 @@ const QrCard = ({ t, targetUrl, compact = false }) => {
 
   return (
     <div
-      className={`bg-white border border-[#E6E2D8] ${compact ? "p-6" : "p-10"} text-center print-page`}
+      className={`qr-card bg-white border border-[#E6E2D8] ${compact ? "p-6" : "p-12 sm:p-16"} text-center`}
       data-testid="qr-card"
     >
-      <p className="micro-label">{RESTAURANT_NAME}</p>
+      <p className="micro-label qr-brand">{RESTAURANT_NAME}</p>
       <div className="gold-line my-4" />
-      <h3 className="font-serif-display text-2xl text-[#2C2A29]">{t.qrTitle}</h3>
+      <h3 className="font-serif-display text-2xl sm:text-3xl text-[#2C2A29]">{t.qrTitle}</h3>
       <p className="text-xs text-[#7A7571] mt-2">{t.qrSubtitle}</p>
 
-      <div className="my-8 inline-block p-4 border border-[#E6E2D8] bg-white">
+      <div className="qr-image-wrap my-8 inline-block p-4 border border-[#E6E2D8] bg-white">
         <img
-          src={buildQrUrl(targetUrl, compact ? 280 : 480)}
+          src={buildQrUrl(targetUrl, 1000)}
           alt="QR code"
           width={compact ? 220 : 360}
           height={compact ? 220 : 360}
-          style={{ display: "block" }}
+          style={{ display: "block", width: compact ? 220 : 360, height: compact ? 220 : 360 }}
           data-testid="qr-image"
         />
       </div>
 
       <p className="micro-label">{t.scanCta}</p>
-      <p className="mt-2 text-[11px] text-[#9A938C] break-all max-w-md mx-auto">
+      <p className="qr-url mt-2 text-[11px] text-[#9A938C] break-all max-w-md mx-auto">
         {targetUrl}
       </p>
 
