@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Star, User, Check, X, Lock, Printer, Copy, ExternalLink, ArrowLeft } from "lucide-react";
 import { translations, waiters } from "@/i18n";
 import "@/App.css";
@@ -475,13 +475,13 @@ const QrCard = ({ t, targetUrl, compact = false }) => {
           <Copy size={14} strokeWidth={1.5} /> {copied ? t.qrCopied : t.qrCopy}
         </button>
         {compact && (
-          <Link
-            to="/qr"
+          <a
+            href="/qr"
             className="inline-flex items-center gap-2 px-5 py-2.5 btn-text border border-[#E6E2D8] text-[#7A7571] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors"
             data-testid="qr-standalone-link"
           >
             <ExternalLink size={14} strokeWidth={1.5} /> {t.qrOpenStandalone}
-          </Link>
+          </a>
         )}
       </div>
     </div>
@@ -497,13 +497,13 @@ const QrPage = ({ t, lang, onToggleLang }) => {
     <div className="min-h-screen w-full" style={{ background: "var(--bg)" }}>
       <LanguageToggle onToggle={onToggleLang} t={t} />
       <div className="max-w-2xl mx-auto px-6 py-16 fade-up">
-        <Link
-          to="/"
+        <a
+          href="/"
           className="no-print inline-flex items-center gap-2 micro-label hover:text-[#2C2A29] transition-colors mb-6"
           data-testid="qr-back-link"
         >
           <ArrowLeft size={12} strokeWidth={1.5} /> {t.qrBack}
-        </Link>
+        </a>
         <QrCard t={t} targetUrl={targetUrl} />
       </div>
     </div>
@@ -736,6 +736,35 @@ export default function App() {
     try { localStorage.setItem(LANG_KEY, lang); } catch { /* ignore */ }
   }, [lang, t.dir]);
 
+  // === Aggressive platform-branding killer ===
+  // The platform script may inject / re-inject an "emergent-badge" element with
+  // inline !important styles. We nuke it on mount and on every DOM mutation.
+  useEffect(() => {
+    const killBadge = () => {
+      const selectors = [
+        '#emergent-badge',
+        'a[id*="emergent"]',
+        'a[href*="emergent.sh"]',
+        'a[href*="emergent.host"]',
+      ];
+      selectors.forEach((sel) => {
+        document.querySelectorAll(sel).forEach((el) => {
+          try { el.remove(); } catch { /* ignore */ }
+        });
+      });
+      // Also strip any element whose visible text says "Made with Emergent"
+      document.querySelectorAll("a, div, span, p").forEach((el) => {
+        if (el.childElementCount === 0 && /made with emergent/i.test(el.textContent || "")) {
+          try { el.remove(); } catch { /* ignore */ }
+        }
+      });
+    };
+    killBadge();
+    const observer = new MutationObserver(killBadge);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   const toggleLang = () => {
     if (!enableArabic) return;
     setLang((l) => (l === "en" ? "ar" : "en"));
@@ -743,6 +772,19 @@ export default function App() {
   };
 
   if (!isAccountActive) return <SuspendedView />;
+
+  // === Bulletproof /qr fallback ===
+  // Some hosts may not serve the SPA fallback predictably; check pathname directly
+  // and render the standalone QR page without BrowserRouter dependency.
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+  const isQrPath = /^\/qr\/?$/i.test(pathname);
+  if (isQrPath) {
+    return (
+      <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+        <QrPage t={t} lang={lang} onToggleLang={toggleLang} />
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
