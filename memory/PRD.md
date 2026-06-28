@@ -1,74 +1,88 @@
 # GAIA — Restaurant Waiter & Food Rating Web App (PRD)
 
 ## Original Problem Statement
-Modern, mobile-responsive "Classic 5-Star Restaurant Waiter & Food Rating Web App" for high-end Dubai restaurants. Single-page app. English default with a smooth Arabic/RTL toggle. Classic Google-Maps-style 5-star rating (no emojis, gold when selected). Three views in one page: Customer, Owner Dashboard (Staff Login → password "1234"), and a master kill-switch suspended notice. On submit: 4–5★ opens a Google Maps review tab; 1–3★ stays on page, saves locally, and shows a Thank-You popup.
-
-## User Choices
-- Restaurant name: **GAIA**
-- Storage: **browser localStorage** (no backend)
-- Staff password: **1234**
-- Sample waiter names accepted (Ahmed, Omar, Sara, Layla, Khalid, Mariam)
+Modern, mobile-responsive "Classic 5-Star Restaurant Waiter & Food Rating Web App" for high-end Dubai restaurants. Single-page app. English default with smooth Arabic/RTL toggle. Classic Google-Maps-style 5-star rating (no emojis, gold when selected). Three views in one page: Customer, Owner Dashboard (Staff Login → password "1234"), and a master kill-switch suspended notice. On submit: 4–5★ opens a Google Maps review tab; 1–3★ stays on page, saves locally, and shows a Thank-You popup. Production-grade upgrade: hide platform branding, email manager on low ratings via Resend, 15-min spam protection, printable QR code, easy-fork config block, customizable typography.
 
 ## Architecture
-- **Frontend-only React SPA** (no backend used for this app)
-- **Tech**: React 19, Tailwind CSS, lucide-react icons
-- **Fonts**: Cormorant Garamond + Manrope (EN), Cairo + Tajawal (AR)
-- **Persistence**: `localStorage` keys
-  - `gaia_reviews_v1` — array of `{ id, waiterId, rating, feedback, createdAt }`
-  - `gaia_lang_v1` — `"en" | "ar"`
-- **Master controller**: `const isAccountActive = true;` at top of `App.js`. Flip to `false` to render full-screen suspended notice (bilingual).
-- **Google Maps redirect URL**: `GOOGLE_MAPS_REVIEW_URL` constant at top of `App.js` (currently placeholder — must be replaced with real GAIA Dubai Place ID URL).
+- **Frontend**: React 19 SPA, Tailwind, lucide-react, react-router-dom (for `/qr` route)
+- **Backend**: FastAPI + Mongo + Resend (transactional email)
+- **Email**: Resend Python SDK, async via `asyncio.to_thread` to keep FastAPI non-blocking
+- **Rate limiting**: dual-layer
+  - Server: per-IP 15-min sliding window (in-memory; move to Redis if scaling)
+  - Client: `localStorage` key `gaia_last_alert_v1`
+- **Storage**:
+  - `localStorage.gaia_reviews_v1` — all submitted reviews
+  - `localStorage.gaia_lang_v1` — language preference
+  - `localStorage.gaia_last_alert_v1` — last low-rating alert timestamp
+  - Mongo `alerts` collection — server-side audit trail of low-rating alerts
 
-## User Personas
-- **Diner (Customer)** — sits at table, scans QR / opens link, picks waiter, rates, optionally comments, submits.
-- **Owner / Manager** — opens hidden Staff Login at page bottom, enters PIN, reviews analytics per waiter.
-- **Operator (admin)** — flips `isAccountActive` flag to suspend service when needed.
+## Global Configuration Block (top of `App.js`)
+```js
+const RESTAURANT_NAME = "GAIA";
+const GOOGLE_MAPS_REVIEW_URL = "https://search.google.com/local/writereview?placeid=YOUR_PLACE_ID";
+const MANAGER_EMAIL = "manager@gaia.ae";       // Display only — real send uses backend ENV
+let isAccountActive = true;                    // Master kill-switch
+let enableArabic = true;                       // Hide AR toggle if false
+```
 
-## Core Requirements (static)
-1. English as default language; elegant `عربي` toggle that fully flips UI to RTL Arabic.
-2. Classic 5-star Google Maps style rating (pure SVG, gold `#D4AF37` fill).
-3. Waiter selection grid with round grey vector avatar placeholders.
-4. Optional feedback textarea (bilingual placeholders).
-5. Smart routing on submit:
-   - **4–5★** → `window.open` Google Maps review URL in new tab.
-   - **1–3★** → in-app Thank-You modal, persist locally.
-6. Hidden "Staff Login" link → password modal (password `1234`) → Owner Dashboard.
-7. Owner Dashboard: total reviews, average rating, waiters tracked, per-waiter breakdown table, recent feedback list, logout. Bilingual.
-8. Master kill-switch: `isAccountActive=false` shows full-screen elegant bilingual suspended notice.
-9. Mobile-responsive premium aesthetic (Dubai 5-star feel).
+Backend env (`backend/.env`):
+```
+RESEND_API_KEY=re_your_api_key_here
+SENDER_EMAIL=onboarding@resend.dev
+MANAGER_EMAIL=manager@gaia.ae
+RESTAURANT_NAME=GAIA
+```
 
-## Files
-- `/app/frontend/src/App.js` — single-file app: `App`, `CustomerView`, `OwnerDashboard`, `SuspendedView`, `LanguageToggle`, `PasswordModal`, `ThankYouModal`, `StarRating`, `WaiterAvatar`.
-- `/app/frontend/src/i18n.js` — `translations` (en/ar) + `waiters` array.
-- `/app/frontend/src/index.css` — design tokens + fade-up / modal animations + RTL font swap.
-- `/app/frontend/public/index.html` — Google Fonts preconnect & link.
+## Typography Customization
+All typography lives in CSS variables at the top of `/app/frontend/src/index.css` — change font families, weights, sizes, and tracking in one place:
+- `--font-display-en`, `--font-display-ar`, `--font-body-en`, `--font-body-ar`
+- `--display-weight`, `--brand-size-mobile`, `--brand-size-desktop`, `--brand-tracking`
+- `--label-size`, `--label-tracking`, `--btn-size`, `--btn-tracking`, etc.
 
-## What's Been Implemented — 2026-02-28
-- Premium light luxury UI (Cormorant Garamond display + Manrope UI; Cairo/Tajawal for AR).
-- Bilingual EN ↔ AR toggle with `<html dir>` and font swap, persisted to localStorage.
-- Six-waiter grid with circular `User` vector avatars and gold selected state.
-- Classic SVG 5-star rating with hover preview and click-to-set.
-- Feedback textarea with bilingual placeholders.
-- Submit logic with validation (waiter + rating required), localStorage persistence, smart routing (4–5★ opens GMaps in new tab; 1–3★ shows Thank-You modal).
-- Hidden Staff Login link → custom-styled password modal → Owner Dashboard.
-- Owner Dashboard: 3 stat cards, per-waiter breakdown with 1–5★ distribution, recent feedback table, logout. Bilingual.
-- Suspended view (`isAccountActive=false`) with bilingual elegant message.
-- Full-screen E2E testing via testing_agent_v3: **100% pass on all 11 scenarios**.
+## API Endpoints
+- `GET /api/config` → `{restaurant_name, manager_email, rate_limit_window_seconds, email_configured}`
+- `POST /api/alerts/low-rating` body `{rating(1-3), waiter_name, comment, language}`
+  - 200 on success: `{status, email_sent, email_id?}`
+  - 400 if rating ≥ 4
+  - 429 if rate-limited (`retry_after_seconds`)
+
+## What's Been Implemented
+### Phase 1 — MVP (2026-02-28)
+- Premium light luxury UI (Cormorant Garamond + Cairo/Tajawal, gold #D4AF37 accents).
+- Bilingual EN/AR toggle with persisted preference and RTL flip.
+- Six-waiter selection with grey vector avatars.
+- Classic SVG 5-star rating with hover preview.
+- Submit routing: 4–5★ → Google Maps tab; 1–3★ → in-app Thank-You modal + local save.
+- Hidden Staff Login → password modal → Owner Dashboard with stats, per-waiter breakdown, recent feedback list, logout.
+- Bilingual Suspended View triggered by `isAccountActive=false`.
+
+### Phase 2 — Production upgrade (2026-02-28)
+- **Hidden Emergent badge** via `display:none / visibility:hidden / opacity:0 / pointer-events:none` inline + `#emergent-badge` CSS rule. "Made with Emergent" text is not visibly rendered.
+- **Service Recovery Email Alert** via Resend backend endpoint `POST /api/alerts/low-rating` (sent when rating < 4). Beautiful HTML email containing Rating (stars + numeric), Waiter Name, and Guest Comment.
+- **Spam protection** (15-min sliding window) at both client (`localStorage`) and server (per-IP in-memory dict). User sees a polished bilingual "Just a moment" modal when limited.
+- **Printable QR code** in two places:
+  - **Owner Dashboard** — embedded compact QR card with Print / Copy Link / Open Standalone buttons
+  - **/qr standalone route** — full-page printable version with Back link and `@media print` styles
+  - QR rendered via `api.qrserver.com` (no dependency install needed)
+- **Global config block** at top of `App.js` for easy fork (RESTAURANT_NAME, GOOGLE_MAPS_REVIEW_URL, MANAGER_EMAIL, isAccountActive, enableArabic).
+- **Typography fully customizable** via CSS variables in `index.css`.
+- **E2E tested** (testing_agent_v3): Backend 5/5 + Frontend 14/14 scenarios PASS.
 
 ## Backlog / Next Tasks
-**P0**
-- Replace `GOOGLE_MAPS_REVIEW_URL` placeholder with real GAIA Dubai Place ID URL.
+**P0 — before launch**
+- Set real `RESEND_API_KEY` in `backend/.env` (Resend dashboard → API Keys).
+- Set `SENDER_EMAIL` to a Resend-verified domain (e.g., `alerts@yourdomain.com`).
+- Replace `GOOGLE_MAPS_REVIEW_URL` placeholder with the actual GAIA Dubai Place ID URL.
 
 **P1**
-- Add QR code generator page for printing table tents.
-- Export dashboard data (CSV download) for the owner.
-- Add a "table number" optional field for sharper analytics.
+- Move server-side rate limit store to Redis (currently in-memory; resets on backend restart, single-replica only).
+- CSV export of reviews from dashboard.
 
 **P2**
-- Sync reviews to a backend (FastAPI + Mongo) so multiple devices share data.
-- Add per-day / per-week filter on dashboard.
-- Add owner-facing alerts for any 1–2★ review (email or SMS).
-- Image / dish rating extension.
+- Email digest of all daily reviews (not just low-rating alerts).
+- Web-push notification fallback for the manager.
+- Multi-restaurant support (workspace + table-level QR codes per table).
+- Self-host QR generation via `qrcode` npm package (no external dependency).
 
 ## Test Credentials
 - Staff dashboard password: `1234`
