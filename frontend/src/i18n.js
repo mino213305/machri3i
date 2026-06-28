@@ -16,9 +16,12 @@ export const translations = {
     sending: "Sending...",
     pleaseSelectWaiter: "Please select a waiter first.",
     pleaseRate: "Please select a rating.",
-    thankYouTitle: "Thank you",
+    redirectingTitle: "Thank you for your wonderful review!",
+    redirectingBody:
+      "Redirecting you to Google Maps to share your experience with the world...",
+    thankYouTitle: "We're truly sorry",
     thankYouBody:
-      "We truly appreciate your feedback. Your comments have been sent to our manager so we can refine every detail of your next visit.",
+      "We are deeply sorry that your experience didn't meet your expectations. Your feedback has been sent directly to our management team, and we will look into this immediately.",
     close: "Close",
     staffLogin: "Staff Login",
     enterPassword: "Enter staff password",
@@ -50,6 +53,8 @@ export const translations = {
     qrOpenStandalone: "Open standalone /qr",
     qrBack: "Back",
     scanCta: "Scan to leave a review",
+    csvExport: "Export CSV",
+    csvExportHint: "Download all reviews as a CSV file",
   },
   ar: {
     dir: "rtl",
@@ -65,9 +70,12 @@ export const translations = {
     sending: "جارٍ الإرسال...",
     pleaseSelectWaiter: "الرجاء اختيار النادل أولاً.",
     pleaseRate: "الرجاء اختيار التقييم.",
-    thankYouTitle: "شكراً لكم",
+    redirectingTitle: "شكراً لتقييمك الرائع!",
+    redirectingBody:
+      "جارٍ تحويلك إلى خرائط Google لمشاركة تجربتك مع الآخرين...",
+    thankYouTitle: "نعتذر بصدق",
     thankYouBody:
-      "نقدّر ملاحظاتكم القيّمة. تم إرسال تعليقاتكم إلى المدير لنحرص على تحسين كل تفصيلٍ في زيارتكم القادمة.",
+      "نأسف بشدّةٍ لأن تجربتكم لم ترقَ إلى توقعاتكم. لقد تم إرسال ملاحظاتكم مباشرةً إلى فريق الإدارة، وسنوليها اهتمامنا الفوري.",
     close: "إغلاق",
     staffLogin: "تسجيل دخول الموظفين",
     enterPassword: "أدخل كلمة المرور",
@@ -99,6 +107,8 @@ export const translations = {
     qrOpenStandalone: "افتح صفحة QR مستقلة",
     qrBack: "رجوع",
     scanCta: "امسح الرمز لترك تقييم",
+    csvExport: "تصدير CSV",
+    csvExportHint: "تنزيل جميع التقييمات كملف CSV",
   },
 };
 

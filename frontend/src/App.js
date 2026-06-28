@@ -1,21 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import { Star, User, Check, X, Lock, Printer, Copy, ArrowLeft } from "lucide-react";
+import { Star, User, Check, X, Lock, Printer, Copy, ArrowLeft, Download, Heart } from "lucide-react";
 import { translations, waiters } from "@/i18n";
+import {
+  RESTAURANT_NAME,
+  GOOGLE_MAPS_LINK,
+  MANAGER_EMAIL,
+  ADMIN_PASSWORD,
+  PUBLIC_APP_URL,
+  IS_ACCOUNT_ACTIVE,
+  ENABLE_ARABIC,
+  RATE_LIMIT_MS,
+  REDIRECT_DELAY_MS,
+} from "@/config";
 import "@/App.css";
 
 /* =============================================================
- *  GLOBAL CONFIGURATION (edit for any fork)
+ *  Aliases — keep legacy names readable inside this file.
  * ============================================================= */
-const RESTAURANT_NAME = "GAIA";
-const GOOGLE_MAPS_REVIEW_URL =
-  "https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4"; // Replace with your real Place ID URL
-const MANAGER_EMAIL = "manager@gaia.ae"; // Display-only; real send uses backend ENV
-const PUBLIC_APP_URL = "https://elite-service-stars.emergent.host"; // QR code target
-let isAccountActive = true; // Master kill-switch
-let enableArabic = true;    // Show/hide the Arabic toggle entirely
-
-// Client-side rate limit (must match server window: 15 minutes)
-const RATE_LIMIT_MS = 15 * 60 * 1000;
+const GOOGLE_MAPS_REVIEW_URL = GOOGLE_MAPS_LINK;
+const isAccountActive = IS_ACCOUNT_ACTIVE;
+const enableArabic = ENABLE_ARABIC;
+const STAFF_PASSWORD = ADMIN_PASSWORD;
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -23,7 +28,6 @@ const API = `${BACKEND_URL}/api`;
 const STORAGE_KEY = "gaia_reviews_v1";
 const LANG_KEY = "gaia_lang_v1";
 const RATE_LIMIT_KEY = "gaia_last_alert_v1";
-const STAFF_PASSWORD = "1234";
 
 /* =============================================================
  *  HARD-OVERRIDE STYLES — kills the platform branding badge
@@ -239,7 +243,7 @@ const ThankYouModal = ({ t, onClose }) => (
         <X size={18} strokeWidth={1.5} />
       </button>
       <div className="mx-auto w-14 h-14 rounded-full border border-[#D4AF37] flex items-center justify-center mb-6">
-        <Check size={26} strokeWidth={1.5} color="#D4AF37" />
+        <Heart size={24} strokeWidth={1.4} color="#D4AF37" />
       </div>
       <h2 className="font-serif-display text-3xl text-[#2C2A29] mb-3">{t.thankYouTitle}</h2>
       <div className="gold-line mb-5" />
@@ -251,6 +255,36 @@ const ThankYouModal = ({ t, onClose }) => (
       >
         {t.close}
       </button>
+    </div>
+  </ModalShell>
+);
+
+const RedirectingModal = ({ t }) => (
+  <ModalShell testId="redirecting-modal">
+    <div className="modal-in max-w-md w-full bg-white border border-[#E6E2D8] px-8 py-12 text-center">
+      <div className="mx-auto w-14 h-14 rounded-full border border-[#D4AF37] flex items-center justify-center mb-6">
+        <Check size={26} strokeWidth={1.5} color="#D4AF37" />
+      </div>
+      <h2 className="font-serif-display text-3xl text-[#2C2A29] mb-3" data-testid="redirecting-title">
+        {t.redirectingTitle}
+      </h2>
+      <div className="gold-line mb-5" />
+      <p className="text-[#7A7571] text-sm leading-relaxed" data-testid="redirecting-body">
+        {t.redirectingBody}
+      </p>
+      <div
+        className="mt-8 mx-auto h-[2px] w-40 overflow-hidden bg-[#E6E2D8] relative"
+        aria-hidden="true"
+      >
+        <span
+          className="absolute left-0 top-0 h-full bg-[#D4AF37]"
+          style={{
+            width: "100%",
+            transform: "translateX(-100%)",
+            animation: `redirectProgress ${REDIRECT_DELAY_MS}ms linear forwards`,
+          }}
+        />
+      </div>
     </div>
   </ModalShell>
 );
@@ -341,6 +375,7 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [showThankYou, setShowThankYou] = useState(false);
+  const [showRedirecting, setShowRedirecting] = useState(false);
   const [showRateLimited, setShowRateLimited] = useState(false);
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -365,6 +400,12 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
     }
   };
 
+  const resetForm = () => {
+    setSelectedWaiter(null);
+    setRating(0);
+    setFeedback("");
+  };
+
   const handleSubmit = async () => {
     if (!selectedWaiter) { setFormError(t.pleaseSelectWaiter); return; }
     if (!rating) { setFormError(t.pleaseRate); return; }
@@ -382,8 +423,13 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
     saveReview(review);
 
     if (rating >= 4) {
-      window.open(GOOGLE_MAPS_REVIEW_URL, "_blank", "noopener,noreferrer");
-      setSelectedWaiter(null); setRating(0); setFeedback("");
+      // Show a graceful 2.5s transition before opening Google Maps.
+      setShowRedirecting(true);
+      setTimeout(() => {
+        window.open(GOOGLE_MAPS_REVIEW_URL, "_blank", "noopener,noreferrer");
+        setShowRedirecting(false);
+        resetForm();
+      }, REDIRECT_DELAY_MS);
       return;
     }
 
@@ -404,7 +450,7 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
 
   const closeThankYou = () => {
     setShowThankYou(false);
-    setSelectedWaiter(null); setRating(0); setFeedback("");
+    resetForm();
   };
 
   return (
@@ -493,6 +539,7 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
       </div>
 
       {showThankYou && <ThankYouModal t={t} onClose={closeThankYou} />}
+      {showRedirecting && <RedirectingModal t={t} />}
       {showRateLimited && (
         <RateLimitedModal t={t} onClose={() => setShowRateLimited(false)} />
       )}
@@ -658,6 +705,36 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
     }
   };
 
+  const exportCsv = () => {
+    const escape = (v) => {
+      const s = String(v ?? "");
+      // Wrap in quotes and escape internal quotes per RFC 4180
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = ["id", "date", "waiter", "rating", "comment"];
+    const rows = reviews.map((r) => {
+      const w = waiters.find((x) => x.id === r.waiterId);
+      return [
+        r.id,
+        new Date(r.createdAt).toISOString(),
+        w ? w.en : "Unknown",
+        r.rating,
+        (r.feedback || "").replace(/\r?\n/g, " "),
+      ].map(escape).join(",");
+    });
+    const csv = "\uFEFF" + [header.join(","), ...rows].join("\n"); // BOM for Excel UTF-8
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `${RESTAURANT_NAME.toLowerCase()}-reviews-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="w-full max-w-5xl mx-auto px-6 py-16 fade-up">
       <div className="flex items-center justify-between mb-10">
@@ -667,13 +744,24 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
             {t.dashboardTitle}
           </h1>
         </div>
-        <button
-          onClick={onLogout}
-          className="px-5 py-2 btn-text border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors"
-          data-testid="dashboard-logout-button"
-        >
-          {t.logout}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCsv}
+            disabled={total === 0}
+            className="inline-flex items-center gap-2 px-5 py-2 btn-text border border-[#E6E2D8] text-[#7A7571] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            data-testid="csv-export-button"
+            title={t.csvExportHint}
+          >
+            <Download size={14} strokeWidth={1.5} /> {t.csvExport}
+          </button>
+          <button
+            onClick={onLogout}
+            className="px-5 py-2 btn-text border border-[#2C2A29] text-[#2C2A29] hover:bg-[#2C2A29] hover:text-white transition-colors"
+            data-testid="dashboard-logout-button"
+          >
+            {t.logout}
+          </button>
+        </div>
       </div>
 
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-[#E6E2D8] border border-[#E6E2D8] mb-14">
