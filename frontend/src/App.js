@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Star, User, Check, X, Lock, Printer, Copy, ExternalLink, ArrowLeft } from "lucide-react";
+import { Star, User, Check, X, Lock, Printer, Copy, ArrowLeft } from "lucide-react";
 import { translations, waiters } from "@/i18n";
 import "@/App.css";
 
@@ -11,6 +10,7 @@ const RESTAURANT_NAME = "GAIA";
 const GOOGLE_MAPS_REVIEW_URL =
   "https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4"; // Replace with your real Place ID URL
 const MANAGER_EMAIL = "manager@gaia.ae"; // Display-only; real send uses backend ENV
+const PUBLIC_APP_URL = "https://elite-service-stars.emergent.host"; // QR code target
 let isAccountActive = true; // Master kill-switch
 let enableArabic = true;    // Show/hide the Arabic toggle entirely
 
@@ -24,6 +24,40 @@ const STORAGE_KEY = "gaia_reviews_v1";
 const LANG_KEY = "gaia_lang_v1";
 const RATE_LIMIT_KEY = "gaia_last_alert_v1";
 const STAFF_PASSWORD = "1234";
+
+/* =============================================================
+ *  HARD-OVERRIDE STYLES — kills the platform branding badge
+ *  no matter what. Inlined inside every top-level return.
+ * ============================================================= */
+const BRAND_KILLER_CSS = `
+  #emergent-badge,
+  a#emergent-badge,
+  a[id*="emergent" i],
+  a[href*="emergent.sh"],
+  a[href*="emergent.host"],
+  [class*="emergent-badge"],
+  [class*="EmergentBadge"],
+  [data-emergent],
+  iframe[src*="emergent"],
+  iframe,
+  div[style*="fixed"][style*="bottom"],
+  a[style*="fixed"][style*="bottom"] {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    position: fixed !important;
+    left: -99999px !important;
+    top: -99999px !important;
+    z-index: -1 !important;
+  }
+`;
+
+const BrandKillerStyle = () => (
+  <style dangerouslySetInnerHTML={{ __html: BRAND_KILLER_CSS }} />
+);
 
 /* =============================================================
  *  STORAGE HELPERS
@@ -58,6 +92,74 @@ const setLastAlertAt = (ts) => {
   } catch {
     /* ignore */
   }
+};
+
+const readSavedLang = () => {
+  if (!enableArabic) return "en";
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    return saved === "ar" ? "ar" : "en";
+  } catch {
+    return "en";
+  }
+};
+
+/* =============================================================
+ *  PLATFORM-BRANDING KILLER (runtime defense)
+ *  Used by both branches via <BrandKillerEffects />.
+ * ============================================================= */
+const BrandKillerEffects = () => {
+  useEffect(() => {
+    // (a) Inject persistent <style> in <head>
+    const STYLE_TAG_ID = "gaia-brand-killer-style";
+    if (!document.getElementById(STYLE_TAG_ID)) {
+      const styleTag = document.createElement("style");
+      styleTag.id = STYLE_TAG_ID;
+      styleTag.appendChild(document.createTextNode(BRAND_KILLER_CSS));
+      document.head.appendChild(styleTag);
+    }
+
+    // (b) + (c) Active removal
+    const killBadge = () => {
+      const selectors = [
+        "#emergent-badge",
+        'a[id*="emergent" i]',
+        'a[href*="emergent.sh"]',
+        'a[href*="emergent.host"]',
+        '[class*="emergent-badge"]',
+        '[class*="EmergentBadge"]',
+        "[data-emergent]",
+        'iframe[src*="emergent"]',
+      ];
+      selectors.forEach((sel) => {
+        try {
+          document.querySelectorAll(sel).forEach((el) => {
+            try { el.remove(); } catch { /* ignore */ }
+          });
+        } catch { /* ignore */ }
+      });
+      // Text sweep: any leaf element saying "Made with Emergent"
+      document.querySelectorAll("a, div, span, p, button").forEach((el) => {
+        if (
+          el.childElementCount === 0 &&
+          /made with emergent/i.test((el.textContent || "").trim())
+        ) {
+          try { el.remove(); } catch { /* ignore */ }
+        }
+      });
+    };
+
+    killBadge();
+    const observer = new MutationObserver(killBadge);
+    observer.observe(document.body, { childList: true, subtree: true });
+    const interval = setInterval(killBadge, 500);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, []);
+  return null;
 };
 
 /* =============================================================
@@ -255,9 +357,7 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
           language: lang,
         }),
       });
-      if (res.status === 429) {
-        return { ok: false, rateLimited: true };
-      }
+      if (res.status === 429) return { ok: false, rateLimited: true };
       return { ok: res.ok, rateLimited: false };
     } catch (e) {
       console.warn("Alert send failed:", e);
@@ -272,7 +372,6 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
 
     const waiterObj = waiters.find((w) => w.id === selectedWaiter);
 
-    // Persist review locally regardless of routing
     const review = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       waiterId: selectedWaiter,
@@ -288,7 +387,6 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
       return;
     }
 
-    // Low rating → spam protection + email alert
     const now = Date.now();
     if (now - getLastAlertAt() < RATE_LIMIT_MS) {
       setShowRateLimited(true);
@@ -299,11 +397,7 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
     const result = await sendLowRatingAlert(waiterObj);
     setSubmitting(false);
 
-    if (result.rateLimited) {
-      setShowRateLimited(true);
-      return;
-    }
-    // Mark local cooldown regardless of email backend result
+    if (result.rateLimited) { setShowRateLimited(true); return; }
     setLastAlertAt(now);
     setShowThankYou(true);
   };
@@ -315,7 +409,6 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
 
   return (
     <div className="w-full max-w-md mx-auto px-6 pt-20 pb-16 flex flex-col">
-      {/* Header */}
       <header className="text-center fade-up fade-up-1">
         <p className="micro-label">{t.eyebrow}</p>
         <div className="gold-line my-5" />
@@ -326,7 +419,6 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
         <p className="micro-label mt-5">{t.tagline}</p>
       </header>
 
-      {/* Waiter Selection */}
       <section className="mt-14 fade-up fade-up-2">
         <p className="micro-label text-center mb-6">{t.selectWaiterLabel}</p>
         <div className="grid grid-cols-3 gap-x-2 gap-y-6">
@@ -354,13 +446,11 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
         </div>
       </section>
 
-      {/* Rating */}
       <section className="mt-14 fade-up fade-up-3">
         <p className="micro-label text-center mb-6">{t.rateLabel}</p>
         <StarRating value={rating} onChange={setRating} />
       </section>
 
-      {/* Feedback */}
       <section className="mt-14 fade-up fade-up-4">
         <p className="micro-label mb-3">{t.feedbackLabel}</p>
         <textarea
@@ -379,7 +469,6 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
         </p>
       )}
 
-      {/* Submit */}
       <div className="mt-10 fade-up fade-up-5">
         <button
           type="button"
@@ -392,7 +481,6 @@ const CustomerView = ({ t, lang, onOpenDashboard }) => {
         </button>
       </div>
 
-      {/* Staff Login link (hidden-style) */}
       <div className="mt-20 text-center">
         <button
           type="button"
@@ -426,9 +514,7 @@ const QrCard = ({ t, targetUrl, compact = false }) => {
       await navigator.clipboard.writeText(targetUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   };
 
   const handlePrint = () => window.print();
@@ -474,39 +560,68 @@ const QrCard = ({ t, targetUrl, compact = false }) => {
         >
           <Copy size={14} strokeWidth={1.5} /> {copied ? t.qrCopied : t.qrCopy}
         </button>
-        {compact && (
-          <a
-            href="/qr"
-            className="inline-flex items-center gap-2 px-5 py-2.5 btn-text border border-[#E6E2D8] text-[#7A7571] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors"
-            data-testid="qr-standalone-link"
-          >
-            <ExternalLink size={14} strokeWidth={1.5} /> {t.qrOpenStandalone}
-          </a>
-        )}
       </div>
     </div>
   );
 };
 
 /* =============================================================
- *  STANDALONE /qr PAGE
+ *  STANDALONE /qr ROUTE — fully self-contained, no router needed
  * ============================================================= */
-const QrPage = ({ t, lang, onToggleLang }) => {
-  const targetUrl = window.location.origin + "/";
+const PrintableQrView = () => {
+  const lang = readSavedLang();
+  const t = translations[lang];
+
+  useEffect(() => {
+    document.documentElement.setAttribute("dir", t.dir);
+    document.documentElement.setAttribute("lang", lang);
+  }, [lang, t.dir]);
+
   return (
-    <div className="min-h-screen w-full" style={{ background: "var(--bg)" }}>
-      <LanguageToggle onToggle={onToggleLang} t={t} />
-      <div className="max-w-2xl mx-auto px-6 py-16 fade-up">
+    <>
+      <BrandKillerStyle />
+      <BrandKillerEffects />
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          minHeight: "100vh",
+          width: "100%",
+          backgroundColor: "#ffffff",
+          padding: "32px 20px",
+          boxSizing: "border-box",
+        }}
+        data-testid="qr-route-root"
+      >
         <a
           href="/"
-          className="no-print inline-flex items-center gap-2 micro-label hover:text-[#2C2A29] transition-colors mb-6"
+          className="no-print"
+          style={{
+            alignSelf: "flex-start",
+            maxWidth: "640px",
+            width: "100%",
+            margin: "0 auto 16px",
+            color: "#7A7571",
+            fontSize: "10px",
+            letterSpacing: "0.25em",
+            textTransform: "uppercase",
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
           data-testid="qr-back-link"
         >
           <ArrowLeft size={12} strokeWidth={1.5} /> {t.qrBack}
         </a>
-        <QrCard t={t} targetUrl={targetUrl} />
+
+        <div style={{ maxWidth: "640px", width: "100%", margin: "0 auto" }}>
+          <QrCard t={t} targetUrl={PUBLIC_APP_URL} />
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
@@ -517,7 +632,6 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
   const reviews = useMemo(() => loadReviews(), []);
   const total = reviews.length;
   const avg = total === 0 ? 0 : reviews.reduce((s, r) => s + r.rating, 0) / total;
-  const targetUrl = window.location.origin + "/";
 
   const waiterMap = useMemo(() => {
     const m = {};
@@ -562,14 +676,12 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
         </button>
       </div>
 
-      {/* Stats */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-[#E6E2D8] border border-[#E6E2D8] mb-14">
         <StatCard label={t.totalReviews} value={total} testId="stat-total" />
         <StatCard label={t.averageRating} value={total ? avg.toFixed(2) : t.none} accent testId="stat-average" />
         <StatCard label={t.waitersTracked} value={waiters.length} testId="stat-waiters" />
       </section>
 
-      {/* Breakdown table */}
       <section className="mb-14">
         <p className="micro-label mb-4">{t.breakdown}</p>
         <div className="overflow-x-auto border border-[#E6E2D8]">
@@ -604,7 +716,6 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
         </div>
       </section>
 
-      {/* Recent feedback */}
       <section className="mb-14">
         <p className="micro-label mb-4">{t.recent}</p>
         {total === 0 ? (
@@ -645,10 +756,18 @@ const OwnerDashboard = ({ t, lang, onLogout }) => {
         )}
       </section>
 
-      {/* QR Code section */}
       <section className="mb-4">
         <p className="micro-label mb-4">{t.qrTitle}</p>
-        <QrCard t={t} targetUrl={targetUrl} compact />
+        <QrCard t={t} targetUrl={PUBLIC_APP_URL} compact />
+        <p className="mt-3 text-center">
+          <a
+            href="/qr"
+            className="inline-flex items-center gap-2 micro-label hover:text-[#D4AF37] transition-colors"
+            data-testid="qr-standalone-link"
+          >
+            {t.qrOpenStandalone}
+          </a>
+        </p>
       </section>
     </div>
   );
@@ -674,23 +793,27 @@ const Td = ({ children }) => (
  *  SUSPENDED VIEW
  * ============================================================= */
 const SuspendedView = () => (
-  <div className="min-h-screen flex items-center justify-center px-6 text-center">
-    <div className="max-w-md flex flex-col items-center gap-6 fade-up">
-      <p className="micro-label">{RESTAURANT_NAME}</p>
-      <div className="gold-line" />
-      <p className="font-serif-display text-2xl text-[#2C2A29] leading-snug" data-testid="suspended-en">
-        This service is temporarily suspended. Please contact technical support.
-      </p>
-      <p
-        dir="rtl"
-        className="text-2xl text-[#2C2A29] leading-snug"
-        style={{ fontFamily: "Cairo, sans-serif" }}
-        data-testid="suspended-ar"
-      >
-        هذه الخدمة متوقفة مؤقتاً، يرجى التواصل مع الدعم الفني.
-      </p>
+  <>
+    <BrandKillerStyle />
+    <BrandKillerEffects />
+    <div className="min-h-screen flex items-center justify-center px-6 text-center">
+      <div className="max-w-md flex flex-col items-center gap-6 fade-up">
+        <p className="micro-label">{RESTAURANT_NAME}</p>
+        <div className="gold-line" />
+        <p className="font-serif-display text-2xl text-[#2C2A29] leading-snug" data-testid="suspended-en">
+          This service is temporarily suspended. Please contact technical support.
+        </p>
+        <p
+          dir="rtl"
+          className="text-2xl text-[#2C2A29] leading-snug"
+          style={{ fontFamily: "Cairo, sans-serif" }}
+          data-testid="suspended-ar"
+        >
+          هذه الخدمة متوقفة مؤقتاً، يرجى التواصل مع الدعم الفني.
+        </p>
+      </div>
     </div>
-  </div>
+  </>
 );
 
 /* =============================================================
@@ -712,19 +835,11 @@ const LanguageToggle = ({ onToggle, t }) => {
 };
 
 /* =============================================================
- *  APP ROOT
+ *  MAIN CUSTOMER + DASHBOARD APP
  * ============================================================= */
-export default function App() {
-  const [lang, setLang] = useState(() => {
-    if (!enableArabic) return "en";
-    try {
-      const saved = localStorage.getItem(LANG_KEY);
-      return saved === "ar" ? "ar" : "en";
-    } catch {
-      return "en";
-    }
-  });
-  const [view, setView] = useState("customer"); // customer | dashboard
+const MainApp = () => {
+  const [lang, setLang] = useState(readSavedLang);
+  const [view, setView] = useState("customer");
   const [askingPassword, setAskingPassword] = useState(false);
   const [fadeKey, setFadeKey] = useState(0);
 
@@ -736,142 +851,53 @@ export default function App() {
     try { localStorage.setItem(LANG_KEY, lang); } catch { /* ignore */ }
   }, [lang, t.dir]);
 
-  // =============================================================
-  //  AGGRESSIVE PLATFORM-BRANDING KILLER
-  //  Three independent defenses run together so the badge cannot
-  //  survive on either / or /qr:
-  //  (a) Inject a <style> tag into <head> with id/class-based CSS
-  //  (b) MutationObserver removes injected nodes the instant they appear
-  //  (c) setInterval(500ms) safety net in case (a) and (b) miss anything
-  // =============================================================
-  useEffect(() => {
-    // (a) Inject a hard-override <style> tag once
-    const STYLE_TAG_ID = "gaia-brand-killer-style";
-    if (!document.getElementById(STYLE_TAG_ID)) {
-      const styleTag = document.createElement("style");
-      styleTag.id = STYLE_TAG_ID;
-      styleTag.appendChild(
-        document.createTextNode(`
-          #emergent-badge,
-          a#emergent-badge,
-          a[id*="emergent"],
-          a[href*="emergent.sh"],
-          a[href*="emergent.host"],
-          [class*="emergent-badge"],
-          [class*="EmergentBadge"],
-          [data-emergent],
-          iframe[src*="emergent"] {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-            width: 0 !important;
-            height: 0 !important;
-            position: fixed !important;
-            left: -99999px !important;
-            top: -99999px !important;
-            z-index: -1 !important;
-          }
-        `),
-      );
-      document.head.appendChild(styleTag);
-    }
-
-    // (b) + (c) Active removal
-    const killBadge = () => {
-      const selectors = [
-        "#emergent-badge",
-        'a[id*="emergent" i]',
-        'a[href*="emergent.sh"]',
-        'a[href*="emergent.host"]',
-        '[class*="emergent-badge"]',
-        '[class*="EmergentBadge"]',
-        "[data-emergent]",
-        'iframe[src*="emergent"]',
-      ];
-      selectors.forEach((sel) => {
-        try {
-          document.querySelectorAll(sel).forEach((el) => {
-            try { el.remove(); } catch { /* ignore */ }
-          });
-        } catch { /* ignore selector */ }
-      });
-      // Text-content sweep — kill any leaf element whose only text is "Made with Emergent"
-      document.querySelectorAll("a, div, span, p, button").forEach((el) => {
-        if (
-          el.childElementCount === 0 &&
-          /made with emergent/i.test((el.textContent || "").trim())
-        ) {
-          try { el.remove(); } catch { /* ignore */ }
-        }
-      });
-    };
-
-    killBadge();
-    const observer = new MutationObserver(killBadge);
-    observer.observe(document.body, { childList: true, subtree: true });
-    const interval = setInterval(killBadge, 500);
-
-    return () => {
-      observer.disconnect();
-      clearInterval(interval);
-    };
-  }, []);
-
   const toggleLang = () => {
     if (!enableArabic) return;
     setLang((l) => (l === "en" ? "ar" : "en"));
     setFadeKey((k) => k + 1);
   };
 
-  if (!isAccountActive) return <SuspendedView />;
-
-  // === Bulletproof /qr fallback ===
-  // Some hosts may not serve the SPA fallback predictably; check pathname directly
-  // and render the standalone QR page without BrowserRouter dependency.
-  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
-  const isQrPath = /^\/qr\/?$/i.test(pathname);
-  if (isQrPath) {
-    return (
+  return (
+    <>
+      <BrandKillerStyle />
+      <BrandKillerEffects />
       <div className="min-h-screen" style={{ background: "var(--bg)" }}>
-        <QrPage t={t} lang={lang} onToggleLang={toggleLang} />
+        <LanguageToggle onToggle={toggleLang} t={t} />
+        <main key={`${view}-${lang}-${fadeKey}`} className="fade-up">
+          {view === "customer" ? (
+            <CustomerView t={t} lang={lang} onOpenDashboard={() => setAskingPassword(true)} />
+          ) : (
+            <OwnerDashboard t={t} lang={lang} onLogout={() => setView("customer")} />
+          )}
+        </main>
+        {askingPassword && (
+          <PasswordModal
+            t={t}
+            onCancel={() => setAskingPassword(false)}
+            onConfirm={() => { setAskingPassword(false); setView("dashboard"); }}
+          />
+        )}
       </div>
-    );
+    </>
+  );
+};
+
+/* =============================================================
+ *  APP DISPATCHER (top-level)
+ *  >>>  Strict path check is the VERY FIRST thing rendered.  <<<
+ * ============================================================= */
+export default function App() {
+  // === BULLETPROOF /qr ROUTE ===
+  // No router, no state, no hooks above. Just a hard `window.location.pathname` check.
+  const path = typeof window !== "undefined" ? window.location.pathname : "/";
+  if (path === "/qr" || path === "/qr/") {
+    return <PrintableQrView />;
   }
 
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/qr"
-          element={<QrPage t={t} lang={lang} onToggleLang={toggleLang} />}
-        />
-        <Route
-          path="*"
-          element={
-            <div className="min-h-screen" style={{ background: "var(--bg)" }}>
-              <LanguageToggle onToggle={toggleLang} t={t} />
-              <main key={`${view}-${lang}-${fadeKey}`} className="fade-up">
-                {view === "customer" ? (
-                  <CustomerView t={t} lang={lang} onOpenDashboard={() => setAskingPassword(true)} />
-                ) : (
-                  <OwnerDashboard t={t} lang={lang} onLogout={() => setView("customer")} />
-                )}
-              </main>
-              {askingPassword && (
-                <PasswordModal
-                  t={t}
-                  onCancel={() => setAskingPassword(false)}
-                  onConfirm={() => { setAskingPassword(false); setView("dashboard"); }}
-                />
-              )}
-            </div>
-          }
-        />
-      </Routes>
-    </BrowserRouter>
-  );
+  if (!isAccountActive) return <SuspendedView />;
+
+  return <MainApp />;
 }
 
 /* Export config for documentation / testing */
-export { RESTAURANT_NAME, GOOGLE_MAPS_REVIEW_URL, MANAGER_EMAIL };
+export { RESTAURANT_NAME, GOOGLE_MAPS_REVIEW_URL, MANAGER_EMAIL, PUBLIC_APP_URL };
