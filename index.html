@@ -2,31 +2,42 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة تقييم النوادل - GAIA</title>
+    <title>GAIA - لوحة التقييم</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #fdfbf7; text-align: center; padding: 20px; }
-        .container { max-width: 600px; margin: auto; }
-        h1 { color: #333; }
-        .waiters-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 30px; }
-        .waiter-card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .stars { margin-top: 10px; cursor: pointer; color: #ffcc00; font-size: 24px; }
+        body { font-family: 'Arial', sans-serif; background-color: #fdfbf7; text-align: center; padding: 20px; }
+        .waiter-btn { background: #fff; border: 1px solid #ddd; padding: 20px; margin: 10px; cursor: pointer; border-radius: 8px; transition: 0.3s; }
+        .waiter-btn:hover, .waiter-btn.selected { background: #e0d8c3; border-color: #c0b090; }
+        .stars { font-size: 30px; cursor: pointer; color: #ccc; }
+        .stars span.active { color: #ffcc00; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>مرحباً بك في GAIA</h1>
-        <p>يرجى اختيار النادل لتقييم خدمته:</p>
-        <div class="waiters-grid">
-            <div class="waiter-card">أحمد</div>
-            <div class="waiter-card">عمر</div>
-            <div class="waiter-card">سارة</div>
-            <div class="waiter-card">ليلى</div>
-            <div class="waiter-card">خالد</div>
-            <div class="waiter-card">مريم</div>
-        </div>
-        <h3>قيم تجربتك:</h3>
-        <div class="stars">★★★★★</div>
+    <h1>مرحباً بك في GAIA</h1>
+    <p>يرجى اختيار النادل لتقييم خدمته:</p>
+    <div id="waiters">
+        <!-- أزرار النوادل -->
+        <button class="waiter-btn" onclick="selectWaiter(this)">أحمد</button>
+        <button class="waiter-btn" onclick="selectWaiter(this)">عمر</button>
+        <button class="waiter-btn" onclick="selectWaiter(this)">سارة</button>
+        <button class="waiter-btn" onclick="selectWaiter(this)">ليلى</button>
+        <button class="waiter-btn" onclick="selectWaiter(this)">خالد</button>
+        <button class="waiter-btn" onclick="selectWaiter(this)">مريم</button>
     </div>
+    <h3>قيم تجربتك:</h3>
+    <div class="stars" id="star-rating">
+        <span onclick="rate(1)">★</span><span onclick="rate(2)">★</span>
+        <span onclick="rate(3)">★</span><span onclick="rate(4)">★</span><span onclick="rate(5)">★</span>
+    </div>
+
+    <script>
+        function selectWaiter(btn) {
+            document.querySelectorAll('.waiter-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+        function rate(stars) {
+            let spans = document.querySelectorAll('#star-rating span');
+            spans.forEach((s, i) => s.classList.toggle('active', i < stars));
+        }
+    </script>
 </body>
 </html>
