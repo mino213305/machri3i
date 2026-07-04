@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GAIA — A Refined Experience</title>
+    <style>
+        body { font-family: 'Cairo', sans-serif; background-color: #FDFBF7; text-align: center; padding: 20px; }
+        .admin-panel { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; }
+        button { background-color: #d9534f; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 15px; }
+        button:hover { background-color: #c9302c; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-panel">
+        <h1>لوحة تحكم GAIA</h1>
+        <p>مرحباً بك في نظامك المستقل.</p>
+        
+        <!-- زر الحذف الاحترافي -->
+        <button onclick="clearSystem()">مسح كافة البيانات وإعادة التعيين</button>
+    </div>
+
+    <script>
+        function clearSystem() {
+            if (confirm('تنبيه: سيتم مسح كافة إعدادات التقييم الحالية، هل أنت متأكد؟')) {
+                // هذا الأمر يمسح أي بيانات مؤقتة كانت تعتمد عليها الواجهة القديمة
+                localStorage.clear();
+                alert('تم التصفير بنجاح، يمكنك الآن البدء من جديد.');
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
